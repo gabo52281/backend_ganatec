@@ -691,26 +691,22 @@ export const consultarAnimalesFinca = async (fincaId) => {
 
   const animales = resultado.rows;
 
-  const activos = animales.filter((animal) => animal.estado === "activo");
+  const totales = await pool.query(`
+    SELECT COUNT(*)::int AS total,
+      COUNT(*) FILTER (WHERE estado = 'activo')::int AS activos,
+      COUNT(*) FILTER (WHERE estado = 'activo' AND sexo = 'hembra')::int AS hembras_activas,
+      COUNT(*) FILTER (WHERE estado = 'activo' AND sexo = 'macho')::int AS machos_activos,
+      COUNT(*) FILTER (WHERE estado = 'vendido')::int AS vendidos,
+      COUNT(*) FILTER (WHERE estado = 'muerto')::int AS muertos,
+      COUNT(*) FILTER (WHERE estado = 'trasladado')::int AS trasladados
+    FROM animales WHERE finca_id = $1
+  `, [fincaId]);
 
   return {
     resumen: {
-      total: animales.length,
-
-      activos: activos.length,
-
-      hembras_activas: activos.filter((animal) => animal.sexo === "hembra")
-        .length,
-
-      machos_activos: activos.filter((animal) => animal.sexo === "macho")
-        .length,
-
-      vendidos: animales.filter((animal) => animal.estado === "vendido").length,
-
-      muertos: animales.filter((animal) => animal.estado === "muerto").length,
-
-      trasladados: animales.filter((animal) => animal.estado === "trasladado")
-        .length,
+      ...totales.rows[0],
+      registros_mostrados: animales.length,
+      detalle_completo: totales.rows[0].total === animales.length,
     },
 
     animales: animales.map((animal) => ({
@@ -1763,21 +1759,27 @@ export const consultarInventarioFinca = async (fincaId) => {
     };
   });
 
-  const stockBajo = productos.filter(
-    (producto) => producto.estado_stock === "bajo",
-  );
-
-  const agotados = productos.filter(
-    (producto) => producto.estado_stock === "agotado",
-  );
+  const totales = await pool.query(`
+    WITH existencias AS (
+      SELECT pi.id, pi.stock_minimo,
+        COALESCE(SUM(CASE WHEN mi.tipo = 'entrada' THEN mi.cantidad
+          WHEN mi.tipo = 'salida' THEN -mi.cantidad ELSE 0 END), 0) AS stock_actual
+      FROM productos_inventario pi
+      LEFT JOIN movimientos_inventario mi ON mi.producto_id = pi.id
+      WHERE pi.finca_id = $1 AND pi.activo = TRUE
+      GROUP BY pi.id, pi.stock_minimo
+    )
+    SELECT COUNT(*)::int AS productos_activos,
+      COUNT(*) FILTER (WHERE stock_actual > 0 AND stock_actual <= stock_minimo)::int AS stock_bajo,
+      COUNT(*) FILTER (WHERE stock_actual <= 0)::int AS agotados
+    FROM existencias
+  `, [fincaId]);
 
   return {
     resumen: {
-      productos_activos: productos.length,
-
-      stock_bajo: stockBajo.length,
-
-      agotados: agotados.length,
+      ...totales.rows[0],
+      registros_mostrados: productos.length,
+      detalle_completo: totales.rows[0].productos_activos === productos.length,
     },
 
     productos,

@@ -228,7 +228,7 @@ export const preguntarIA = async (req, res) => {
             ["usuario", "ia"].includes(mensaje.tipo) &&
             typeof mensaje.contenido === "string",
         )
-        .slice(-4)
+        .slice(-8)
         .map((mensaje) => ({
           tipo: mensaje.tipo,
 

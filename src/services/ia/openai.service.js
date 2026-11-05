@@ -5,6 +5,13 @@ const openai = new OpenAI({
   apiKey: process.env.OPENAI_API_KEY
 });
 
+const normalizar = (texto = "") => String(texto).toLowerCase()
+  .normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+
+const pideAnalisis = (pregunta = "") =>
+  /analiz|evalu|compar|profund|detall|informe|reporte|explic|recomend|tendencia|rendimiento|diagnostic|mejorar|resumen general|como va la finca|como esta la finca/
+    .test(normalizar(pregunta));
+
 
 export const generarRespuestaIA = async ({
   pregunta,
@@ -21,7 +28,7 @@ const historialConversacion =
   &&
   historial.length > 0
     ? historial
-        .slice(-4)
+        .slice(-8)
         .map(
           (mensaje) =>
             `${
@@ -33,8 +40,9 @@ const historialConversacion =
         .join("\n")
     : "Sin historial reciente.";
 
-  const response =
-    await openai.responses.create({
+  const limiteInicial = pideAnalisis(pregunta) ? 2800 : 1200;
+
+  const opciones = {
 
       model:
         process.env.OPENAI_MODEL
@@ -97,8 +105,9 @@ REGLAS IMPORTANTES:
     datos. Trabajas únicamente con el contexto que
     GANATEC te proporciona.
 
-13. Sé claro, práctico y relativamente breve.
-    Evita explicaciones innecesariamente largas.
+13. Adapta la extensión: responde brevemente preguntas sencillas, pero
+    desarrolla análisis, detalles y comparaciones cuando sean necesarios.
+    Incluye hallazgos y acciones prácticas, sin inventar información.
 
 14. Responde siempre en español.
 
@@ -135,10 +144,34 @@ CONTEXTO AUTORIZADO DE GANATEC:
 ${JSON.stringify(contexto)}
 `,
 
-      max_output_tokens: 700
+      max_output_tokens: limiteInicial
 
+  };
+
+  let response = await openai.responses.create(opciones);
+  const seTrunco = (r) => r.status === "incomplete" &&
+    r.incomplete_details?.reason === "max_output_tokens";
+  if (seTrunco(response)) {
+    response = await openai.responses.create({
+      ...opciones,
+      max_output_tokens: pideAnalisis(pregunta) ? 4200 : 2400,
     });
+  }
 
+  // Registrar solo métricas técnicas; no preguntas ni contenido privado.
+  console.info("[GANATEC IA]", {
+    estado: response.status,
+    causa: response.incomplete_details?.reason ?? null,
+    tokens_entrada: response.usage?.input_tokens ?? null,
+    tokens_salida: response.usage?.output_tokens ?? null,
+    tokens_razonamiento: response.usage?.output_tokens_details?.reasoning_tokens ?? null,
+  });
 
-  return response.output_text;
+  const texto = (response.output_text || "").trim();
+  if (response.status === "completed" && texto) return texto;
+  if (seTrunco(response) && texto) {
+    return texto + "\n\n(Esta respuesta puede estar incompleta por el límite de salida.)";
+  }
+  throw new Error("La respuesta de IA no terminó correctamente: " +
+    (response.incomplete_details?.reason || response.status));
 };

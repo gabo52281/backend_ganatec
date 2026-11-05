@@ -301,6 +301,13 @@ const detectarModulosPregunta = (
       "situacion de la finca",
       "como estamos",
       "estado general",
+      "rendimiento de mi finca",
+      "analiza mi finca",
+      "analiza la finca",
+      "que debo mejorar en mi finca",
+      "como va mi finca",
+      "recomendaciones para mi finca",
+      "informe de la finca",
     ]);
 
 
@@ -405,6 +412,9 @@ const esPreguntaSeguimientoConversacional = (
     "mas informacion",
     "dame informacion",
     "dame mas detalles",
+    "profundiza",
+    "amplia la respuesta",
+    "dame un analisis",
     "dame detalles",
     "mas detalles",
     "explicame mas",
@@ -545,9 +555,6 @@ const resolverModulosConversacion = (
           (modulo) =>
             modulo !==
               "conocimiento_general"
-            &&
-            modulo !==
-              "general"
         )
       );
 
@@ -838,7 +845,13 @@ export const construirContextoIA = async (
         "general"
       )
       ||
-      esPreguntaGeneralAnimal;
+      esPreguntaGeneralAnimal
+      ||
+      (
+        animalHeredado
+        && modulosPregunta.has("conocimiento_general")
+        && esPreguntaSeguimientoConversacional(pregunta)
+      );
 
 
     const consultarPesajes =
